@@ -14,6 +14,10 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET,
 
 })
+// console.log('Cloudinary Cloud Name:', process.env.CLOUDINARY_CLOUD_NAME);
+// console.log('Cloudinary API Key:', process.env.CLOUDINARY_API_KEY);
+// console.log('Cloudinary API Secret:', process.env.CLOUDINARY_API_SECRET);
+
 const app =express();
 const PORT = process.env.PORT || 5000;
 app.use(express.json({limit:"5mb"}));
