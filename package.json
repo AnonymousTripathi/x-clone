@@ -4,7 +4,7 @@
   "main": "server.js",
   "scripts": {
     "dev": "Node_ENV=development nodemon backend/server.js",
-    "start": "Node_ENV=production node backend/server.js",
+    "start": "Node_ENV=production nodemon backend/server.js",
     "build": "npm install && npm install --prefix frontend && npm run build --prefix frontend"
   },
   "keywords": [],
