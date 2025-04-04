@@ -2,6 +2,8 @@ import Notification from "../models/notification.model.js";
 import Post from "../models/post.model.js";
 import User from "../models/user.model.js";
 import { v2 as cloudinary } from "cloudinary";
+import * as toxicity from '@tensorflow-models/toxicity';
+import * as tf from '@tensorflow/tfjs';
 
 
 
@@ -38,6 +40,7 @@ export const createPost = async (req, res) => {
 	}
 };
 
+
 export const deletePost = async (req, res) => {
 	try {
 		const post = await Post.findById(req.params.id);
@@ -63,32 +66,125 @@ export const deletePost = async (req, res) => {
 	}
 };
 
+// Global variable to hold the loaded toxicity model
+let toxicityModel = null;
+
+// Function to load the toxicity model (run once on server start)
+async function loadToxicityModel() {
+    try {
+        console.log('Loading toxicity model (backend)...');
+        toxicityModel = await toxicity.load(0.8); // Adjust threshold as needed
+        console.log('Toxicity model loaded (backend).');
+    } catch (error) {
+        console.error('Error loading toxicity model (backend):', error);
+    }
+}
+
+// Call the load function when this module is loaded
+loadToxicityModel();
+
+async function isCommentToxicBackend(text) {
+    if (!toxicityModel) {
+        console.warn('Toxicity model not loaded yet.');
+        return false; // Or handle this case as needed
+    }
+    try {
+        const predictions = await toxicityModel.classify([text]);
+        return predictions.some(prediction => prediction.results.some(result => result.match));
+    } catch (error) {
+        console.error('Error classifying comment:', error);
+        return false;
+    }
+}
+
 export const commentOnPost = async (req, res) => {
-	try {
-		const { text } = req.body;
-		const postId = req.params.id;
-		const userId = req.user._id;
+    try {
+        const { text } = req.body;
+        const postId = req.params.id;
+        const userId = req.user._id;
 
-		if (!text) {
-			return res.status(400).json({ error: "Text field is required" });
-		}
-		const post = await Post.findById(postId);
+        if (!text) {
+            return res.status(400).json({ error: "Text field is required" });
+        }
 
-		if (!post) {
-			return res.status(404).json({ error: "Post not found" });
-		}
+        const isToxic = await isCommentToxicBackend(text);
 
-		const comment = { user: userId, text };
+        if (isToxic) {
+            return res.status(400).json({ error: "This is an inappropriate comment." });
+        }
 
-		post.comments.push(comment);
-		await post.save();
+        const post = await Post.findById(postId);
 
-		res.status(200).json(post);
-	} catch (error) {
-		console.log("Error in commentOnPost controller: ", error);
-		res.status(500).json({ error: "Internal server error" });
-	}
+        if (!post) {
+            return res.status(404).json({ error: "Post not found" });
+        }
+
+        const comment = { user: userId, text };
+
+        post.comments.push(comment);
+        await post.save();
+
+        res.status(200).json(post);
+    } catch (error) {
+        console.log("Error in commentOnPost controller: ", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
 };
+export const deleteComment = async (req, res) => {
+    try {
+        const { postId, commentId } = req.params;
+        const userId = req.user._id;
+
+        const post = await Post.findById(postId);
+        if (!post) {
+            return res.status(404).json({ error: "Post not found" });
+        }
+
+        const commentToDelete = post.comments.id(commentId);
+        if (!commentToDelete) {
+            return res.status(404).json({ error: "Comment not found" });
+        }
+
+        // Check if the user deleting the comment is the owner of the comment or the owner of the post
+        if (commentToDelete.user.toString() !== userId.toString() && post.user.toString() !== userId.toString()) {
+            return res.status(401).json({ error: "You are not authorized to delete this comment" });
+        }
+
+        post.comments.pull({ _id: commentId }); // Remove the comment from the array
+        await post.save();
+
+        res.status(200).json({ message: "Comment deleted successfully" });
+    } catch (error) {
+        console.log("Error in deleteComment controller: ", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+};
+// export const commentOnPost = async (req, res) => {
+// 	try {
+// 		const { text } = req.body;
+// 		const postId = req.params.id;
+// 		const userId = req.user._id;
+
+// 		if (!text) {
+// 			return res.status(400).json({ error: "Text field is required" });
+// 		}
+// 		const post = await Post.findById(postId);
+
+// 		if (!post) {
+// 			return res.status(404).json({ error: "Post not found" });
+// 		}
+
+// 		const comment = { user: userId, text };
+
+// 		post.comments.push(comment);
+// 		await post.save();
+
+// 		res.status(200).json(post);
+// 	} catch (error) {
+// 		console.log("Error in commentOnPost controller: ", error);
+// 		res.status(500).json({ error: "Internal server error" });
+// 	}
+// };
 
 export const likeUnlikePost = async (req, res) => {
 	try {
